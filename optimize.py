@@ -5,13 +5,14 @@ rng = np.random.default_rng(seed=123)
 C_s = 5.56e6  # Estimated cost of solar installation/MWH output = $1.13 * 1 / .2 efficiency * 1e6 mw / w
 C_b = 1.5e6  # Cost of storage/MW
 C_g = 183  # Retail cost/MWH of grid electricity
+# C_g = 3.5e4  # test
 
-N = 365 * 5  # 5 year period
+N = 365 * 25  # 5 year period
 
-avg_load = 6000  # Daily average MWH electric load of NYC in
+avg_load = 6000  # Daily average MWH electric load of NYC in 2022
 
 # days are indexed by i
-# theta gradient updates are indexed by n
+# theta and beta gradient updates are indexed by n
 
 # Unfulfilled demand on given day
 
@@ -83,20 +84,21 @@ def grad_theta_grid_purchase_cost(theta_n, beta_n, xis):
     for i, xi in enumerate(xis):
         grad_S_i_prev = 0 if i == 0 else grad_S[i-1]
         S_i_prev = 0 if i == 0 else S[i-1]
-        xi_prev = 0 if i == 0 else xi[i-1]
+        xi_prev = 0 if i == 0 else xis[i-1]
         S_i = min(beta_n, max(S_i_prev + theta_n - xi_prev, 0))
         S.append(S_i)
         x = xi - S_i - theta_n
         h_prime = C_g if x > 0 else 0
-        grad_S_i = grad_S_i_prev(S_i_prev, grad_S_i_prev, theta_n, beta_n, xi)
+        grad_S_i = grad_theta_s_i(S_i_prev, grad_S_i_prev, theta_n, beta_n, xi)
         grad_S.append(grad_S_i)
         # -1 for grad_theta xi - theta
         grad += h_prime*(-1 + grad_S_i)
-    return grad_S
+    return grad
 
 
 def grad_theta_J(theta_n, beta_n):
-    return C_s + grad_theta_grid_purchase_cost(theta_n, beta_n, xis)
+    grad_purchase_cost = grad_theta_grid_purchase_cost(theta_n, beta_n, xis)
+    return C_s + grad_purchase_cost
 
 
 assert (np.abs(C_g*np.sum(xis) -
