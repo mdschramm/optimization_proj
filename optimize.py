@@ -3,11 +3,12 @@ import numpy as np
 rng = np.random.default_rng(seed=123)
 # cost constants estimated here https://www.nrel.gov/docs/fy22osti/80694.pdf
 C_s = 5.56e6  # Estimated cost of solar installation/MWH output = $1.13 * 1 / .2 efficiency * 1e6 mw / w
+# C_s = 1.1e6  # Interesting value of cs - leads to convergence of theta at 967
 C_b = 1.5e6  # Cost of storage/MW
 C_g = 183  # Retail cost/MWH of grid electricity
 # C_g = 3.5e4  # test
 
-N = 365 * 25  # 5 year period
+N = 365 * 20  # 20 year period
 
 avg_load = 6000  # Daily average MWH electric load of NYC in 2022
 
