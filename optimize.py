@@ -2,9 +2,10 @@ import numpy as np
 
 rng = np.random.default_rng(seed=123)
 # cost constants estimated here https://www.nrel.gov/docs/fy22osti/80694.pdf
-C_s = 5.56e6  # Estimated cost of solar installation/MWH output = $1.13 * 1 / .2 efficiency * 1e6 mw / w
-# C_s = 1.1e6  # Interesting value of cs - leads to convergence of theta at 967
+# C_s = 5.56e6  # Estimated cost of solar installation/MWH output = $1.13 * 1 / .2 efficiency * 1e6 mw / w
+C_s = 1.1e6  # Interesting value of cs - leads to convergence of theta at 967
 C_b = 1.5e6  # Cost of storage/MW
+# C_b = 200  # test
 C_g = 183  # Retail cost/MWH of grid electricity
 # C_g = 3.5e4  # test
 
@@ -26,29 +27,46 @@ def grad_theta_x(grad_s_i):
     return -1 - grad_s_i
 
 
+def grad_beta_x(grad_s_i):
+    return -grad_s_i
+
+
 def grad_theta_s_i(s_i_prev, grad_s_i_prev, theta_n, beta_n, xi_i):
     if s_i_prev == 0:
         if theta_n <= xi_i or theta_n >= beta_n + xi_i:
             return 0
-        else:
-            return 1
+        return 1
     elif s_i_prev == beta_n:
         if theta_n <= xi_i - beta_n or theta_n > xi_i:
             return 0
-        else:
-            return 1
+        return 1
     else:
         if theta_n <= xi_i - s_i_prev or theta_n >= beta_n - s_i_prev + xi_i:
             return 0
-        else:
-            return grad_s_i_prev + 1
+        return grad_s_i_prev + 1
+
+
+def grad_beta_s_i(s_i_prev, theta_n, beta_n, xi_i):
+    if s_i_prev == 0:
+        if beta_n <= theta_n - xi_i:
+            return 1
+        return 0
+
+    elif s_i_prev == beta_n:
+        if beta_n > xi_i - theta_n or theta_n >= xi_i:
+            return 1
+        return 0
+    else:
+        if beta_n <= theta_n + s_i_prev - xi_i:
+            return 1
+        return 0
 
 
 def h(x):
     return C_g*x if x > 0 else 0
 
 
-def grad_theta_h(x):
+def h_prime(x):
     return C_g if x > 0 else 0
 
 
@@ -78,28 +96,32 @@ def J(theta_n, beta_n):
     return solar_cost + storage_cost + grid_purchase_cost(theta_n, beta_n, xis)
 
 
-def grad_theta_grid_purchase_cost(theta_n, beta_n, xis):
+# TODO combine computation of beta and theta gradients into same
+# function to save loops
+def grad_grid_purchase_cost(theta_n, beta_n, xis):
     S = []
-    grad = 0
-    grad_S = []
+    grad_theta = 0
+    grad_beta = 0
+    grad_theta_S_i_prev = 0
     for i, xi in enumerate(xis):
-        grad_S_i_prev = 0 if i == 0 else grad_S[i-1]
         S_i_prev = 0 if i == 0 else S[i-1]
         xi_prev = 0 if i == 0 else xis[i-1]
         S_i = min(beta_n, max(S_i_prev + theta_n - xi_prev, 0))
         S.append(S_i)
         x = xi - S_i - theta_n
-        h_prime = C_g if x > 0 else 0
-        grad_S_i = grad_theta_s_i(S_i_prev, grad_S_i_prev, theta_n, beta_n, xi)
-        grad_S.append(grad_S_i)
-        # -1 for grad_theta xi - theta
-        grad += h_prime*(-1 + grad_S_i)
-    return grad
+        grad_theta_S_i = grad_theta_s_i(
+            S_i_prev, grad_theta_S_i_prev, theta_n, beta_n, xi)
+        grad_beta_S_i = grad_beta_s_i(S_i_prev, theta_n, beta_n, xi)
+        grad_theta_S_i_prev = grad_theta_S_i
+        grad_theta += h_prime(x)*grad_theta_x(grad_theta_S_i)
+        grad_beta += h_prime(x)*grad_beta_x(grad_beta_S_i)
+    return grad_theta, grad_beta
 
 
-def grad_theta_J(theta_n, beta_n):
-    grad_purchase_cost = grad_theta_grid_purchase_cost(theta_n, beta_n, xis)
-    return C_s + grad_purchase_cost
+def grad_J(theta_n, beta_n):
+    grad_theta_purch, grad_beta_purch = grad_grid_purchase_cost(
+        theta_n, beta_n, xis)
+    return C_s + grad_theta_purch, C_b + grad_beta_purch
 
 
 assert (np.abs(C_g*np.sum(xis) -
